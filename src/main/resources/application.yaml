@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: AI-Agent
+  ai:
+    dashscope:
+      api-key: "sk-b42ad64e8c4b4ab18574cee29a0a5439"
+      chat:
+        options:
+          model: qwen-turbo
+    mcp:
+      client:
+        stdio:
+          connections:
+            steam-mcp:
+              command: node
+              args:
+                #TODO:想办法改成相对路径
+                # 这里一定要换成 steam_mcp.js 的绝对路径
+                - "F:/Other_Code/SpringAi1/MCP/steam/steam_mcp.js"
+                - "--api-key"
+                - "B4F83D26524686257CECF2DAA50AA47B"
+  logging:
+    level:
+      org.springframework.ai: debug
+      com.alibaba.cloud.ai: debug
+
+
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/ai_girlfriend?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+# springdoc-openapi项目配置
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.example.aiagent.controller
+# knife4j增强配置
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
