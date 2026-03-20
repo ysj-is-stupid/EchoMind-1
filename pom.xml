@@ -72,11 +72,6 @@
             <version>4.38.0</version>
         </dependency>
 
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>dashscope-sdk-java</artifactId>
-            <version>2.19.1</version>
-        </dependency>
 
         <!-- Spring AI Alibaba Agent Framework -->
         <dependency>
@@ -93,11 +88,6 @@
         </dependency>
 
 
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-community-dashscope</artifactId>
-            <version>1.0.0-beta3</version>
-        </dependency>
 
 
         <dependency>

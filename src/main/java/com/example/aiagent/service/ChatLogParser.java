@@ -12,30 +12,23 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * QQ 聊天记录解析器（v2 - 带上下文场景）
- *
- * 改进点：
- * 1. 提取对话对时，带上前面 N 条消息作为上下文（滑动窗口）
- * 2. 同一个场景内的对话能保留完整语境
- * 3. 用于后续 RAG 向量化时，context + question 一起 Embedding
+ * QQ 聊天记录解析器，支持按时间窗口切片并保留上下文
  */
 @Service
 public class ChatLogParser {
 
-    /** 合并消息的最大时间间隔：2 分钟 */
+    /** 同一人连续消息的最大合并间隔：2 分钟 */
     private static final long MERGE_INTERVAL_MS = 2 * 60 * 1000;
 
-    /** 事实提取保留 5 条 */
+    /** 事实提取的上下文窗口大小 */
     private static final int CONTEXT_WINDOW_SIZE = 5;
 
-    /** 场景超时：如果两条消息间隔超过 30 分钟，视为新场景，不带上下文 */
+    /** 两条消息间隔超过 30 分钟视为新场景 */
     private static final long SCENE_TIMEOUT_MS = 30 * 60 * 1000;
 
     /** 匹配图片/视频等媒体占位符 */
     private static final Pattern MEDIA_PATTERN = Pattern.compile(
             "^\\[(?:图片|视频|语音|文件)[:：].*]$");
-
-    // ===== 内部方法 =====
 
     /** 从 JSON 提取消息，过滤撤回和系统消息 */
     private List<ParsedMessage> extractMessages(String jsonStr) {
@@ -62,7 +55,7 @@ public class ChatLogParser {
         return result;
     }
 
-    /** 过滤无效消息：空内容、媒体占位符、JSON卡片 */
+    /** 过滤空内容、媒体占位符和 JSON 卡片消息 */
     private List<ParsedMessage> filterMessages(List<ParsedMessage> messages) {
         return messages.stream()
                 .filter(msg -> {
@@ -78,7 +71,7 @@ public class ChatLogParser {
                 .toList();
     }
 
-    /** 合并同一人连续消息（2 分钟内拼接） */
+    /** 合并同一人 2 分钟内的连续消息 */
     private List<ParsedMessage> mergeConsecutiveMessages(List<ParsedMessage> messages) {
         if (messages.isEmpty())
             return messages;
@@ -103,9 +96,7 @@ public class ChatLogParser {
     }
 
     /**
-     * 事实提取 2.0：阶梯式切片逻辑
-     * 1. 第一刀：按 15 分钟停顿切成 Session
-     * 2. 第二刀：Session 内部按 40 条（重叠 5 条）切成 Scene
+     * 将聊天记录解析为场景列表：先按 15 分钟停顿切 Session，再按 40 条（重叠 5 条）切 Scene
      */
     public List<List<ParsedMessage>> parseToScenes(String jsonStr) {
         List<ParsedMessage> raw = extractMessages(jsonStr);
@@ -121,7 +112,7 @@ public class ChatLogParser {
         return allScenes;
     }
 
-    /** 第一刀：15 分钟绝对停顿切分 Session */
+    /** 按 15 分钟停顿切分 Session */
     private List<List<ParsedMessage>> splitIntoSessions(List<ParsedMessage> messages) {
         List<List<ParsedMessage>> sessions = new ArrayList<>();
         if (messages.isEmpty())
@@ -134,7 +125,7 @@ public class ChatLogParser {
             ParsedMessage prev = messages.get(i - 1);
             ParsedMessage curr = messages.get(i);
 
-            // 如果相邻两条消息间隔超过 15 分钟，另起一个 Session
+            // 间隔超过 15 分钟则另起一个 Session
             if (curr.getTimestamp() - prev.getTimestamp() > 15 * 60 * 1000) {
                 sessions.add(currentSession);
                 currentSession = new ArrayList<>();
@@ -145,12 +136,12 @@ public class ChatLogParser {
         return sessions;
     }
 
-    /** 第二刀：Session 内部按 40 条（重叠 5 条）切成 Scene */
+    /** Session 内部按 40 条（重叠 5 条）切分 Scene */
     private List<List<ParsedMessage>> splitIntoScenes(List<ParsedMessage> session) {
         List<List<ParsedMessage>> scenes = new ArrayList<>();
         int size = session.size();
-        int limit = 40; // 每块最多 40 条
-        int overlap = 5; // 重叠 5 条
+        int limit = 40;
+        int overlap = 5;
 
         if (size <= limit) {
             scenes.add(session);

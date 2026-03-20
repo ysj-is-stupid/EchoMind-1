@@ -3,16 +3,7 @@ package com.example.aiagent.model;
 import lombok.Data;
 import java.util.List;
 
-/**
- * 带上下文的对话场景
- *
- * 不再是单纯的 1问1答，而是带有前几条历史消息作为上下文：
- * {
- * "context": ["我: 听说火葬场工资挺高的", "兄弟: 确实"],
- * "question": "兄弟 我要去唐山了兄弟",
- * "answer": "bro来烧我了？"
- * }
- */
+/** 带上下文的对话场景（context + question + answer） */
 @Data
 public class ConversationPair {
 
@@ -28,10 +19,7 @@ public class ConversationPair {
     /** 回复的时间 */
     private String time;
 
-    /**
-     * 拼接成完整文本（用于向量化 Embedding）
-     * 把 context + question 拼在一起，让搜索时能匹配到完整语境
-     */
+    /** 拼接 context + question 用于向量化 Embedding */
     public String toEmbeddingText() {
         StringBuilder sb = new StringBuilder();
         if (context != null) {

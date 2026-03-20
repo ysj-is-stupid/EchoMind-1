@@ -9,9 +9,7 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 
-/**
- * 人设持久化服务实现类 - 基于本地文件 (persona.json)
- */
+/** 人设持久化实现，以 persona.json 文件存储 */
 @Service
 public class PersonaStorageServiceImpl implements PersonaStorageService {
 
