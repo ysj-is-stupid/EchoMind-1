@@ -3,7 +3,7 @@ spring:
     name: AI-Agent
   ai:
     dashscope:
-      api-key: "sk-b42ad64e8c4b4ab18574cee29a0a5439"
+      api-key: "sk-123456"
       chat:
         options:
           model: qwen-turbo
@@ -18,7 +18,7 @@ spring:
                 # 这里一定要换成 steam_mcp.js 的绝对路径
                 - "F:/Other_Code/SpringAi1/MCP/steam/steam_mcp.js"
                 - "--api-key"
-                - "B4F83D26524686257CECF2DAA50AA47B"
+                - "123456"
   logging:
     level:
       org.springframework.ai: debug
