@@ -3,7 +3,7 @@ package com.example.aiagent.repository;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.example.aiagent.mapper.ChatMessageMapper;
 import com.example.aiagent.model.domain.ChatMessage;
-import org.jspecify.annotations.NonNull;
+import org.springframework.lang.NonNull;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -44,7 +44,7 @@ public class MysqlChatMemoryRepository implements ChatMemoryRepository {
         QueryWrapper<ChatMessage> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("conversation_id", conversationId);
         mapper.delete(queryWrapper);
-        
+
         for (Message message : messages) {
             ChatMessage chatMessage = new ChatMessage();
             chatMessage.setConversationId(conversationId);
@@ -62,7 +62,6 @@ public class MysqlChatMemoryRepository implements ChatMemoryRepository {
         queryWrapper.eq("conversation_id", conversationId);
         mapper.delete(queryWrapper);
     }
-
 
     private Message toMessage(ChatMessage entity) {
         return switch (entity.getMessageType()) {

@@ -9,6 +9,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class PersonaConfig {
     private String name;
-    private String background;
-    private String style;
+    private String identity; // 核心身份定位
+    private String lifeContext; // 长期生活状态/特质
+    private String stableEmotionalStyle; // 稳定情感风格
+    private String socialTendencies; // 长期社交倾向
+    private String macroStyle; // 宏观行文风格
 }

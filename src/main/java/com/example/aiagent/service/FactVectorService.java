@@ -32,27 +32,41 @@ public class FactVectorService {
     }
 
     /**
-     * 事实存储 2.0：彻底剥离瞬时情绪，只存储客观事实及其固有属性（时间、来源、置信度等）
+     * 存储事实列表，相似度超过 0.90 的旧记录会被覆盖更新
+     *
+     * TODO: 在 metadata 中回填系统时间戳，formatAsPrompt 时计算相对时间，防止时空错乱
+     * TODO: 实现定时记忆压缩任务，让模型扫描并合并相互矛盾的旧记录
      */
     public int store(List<FactItem> facts) {
-        List<Document> documents = facts.stream()
-                .map(fact -> {
-                    Map<String, Object> metadata = new HashMap<>();
-                    // 仅保留与事实客观属性相关的元数据
-                    addIfNotNull(metadata, "sourceQuote", fact.getSourceQuote());
-                    addIfNotNull(metadata, "category", fact.getCategory());
-                    addIfNotNull(metadata, "confidence", fact.getConfidence());
-                    addIfNotNull(metadata, "scope", fact.getScope());
-                    addIfNotNull(metadata, "time", fact.getTime());
+        List<Document> documents = new java.util.ArrayList<>();
+        int deduplicatedCount = 0;
 
-                    // 删除之前强行写入 emotion、catchphrases、metaphors 的逻辑
-                    // 让事实保持纯粹的“干”状态，避免 ChatService 的混音器提取到过期的历史情绪
+        for (FactItem fact : facts) {
+            // 高阈值检索，判断是否为重复记忆
+            SearchRequest request = SearchRequest.builder()
+                    .query(fact.getContent())
+                    .topK(1)
+                    .similarityThreshold(0.90)
+                    .build();
 
-                    return new Document(fact.getContent(), metadata);
-                })
-                .toList();
+            List<Document> existing = vectorStore.similaritySearch(request);
+            if (!existing.isEmpty()) {
+                // 删除旧记录，实现覆盖更新
+                vectorStore.delete(List.of(existing.get(0).getId()));
+                deduplicatedCount++;
+                System.out.println("--- [FactVectorService] Deduplication triggered: Overwriting old memory: "
+                        + existing.get(0).getText() + " ---");
+            }
+
+            Map<String, Object> metadata = new HashMap<>();
+            addIfNotNull(metadata, "sourceQuote", fact.getExactSourceQuote());
+            addIfNotNull(metadata, "confidence", fact.getConfidence());
+            documents.add(new Document(fact.getContent(), metadata));
+        }
+
         vectorStore.add(documents);
-        System.out.println("--- [FactVectorService] Saving vector store to " + vectorFile.getName() + " ---");
+        System.out.println("--- [FactVectorService] Saving vector store to " + vectorFile.getName() + ". Deduplicated "
+                + deduplicatedCount + " items ---");
         vectorStore.save(vectorFile);
         return documents.size();
     }
@@ -67,14 +81,12 @@ public class FactVectorService {
         SearchRequest request = SearchRequest.builder()
                 .query(query)
                 .topK(topK)
-                .similarityThreshold(0.50) // 最终权衡阈值：兼顾召回率与抗干扰
+                .similarityThreshold(0.50)
                 .build();
         return vectorStore.similaritySearch(request);
     }
 
-    /**
-     * 格式化事实 Prompt 2.0：增加证据链和置信度提示
-     */
+    /** 将检索到的事实格式化为 Prompt 片段，含置信度低提示 */
     public String formatAsPrompt(List<Document> memories) {
         if (memories.isEmpty())
             return "";
