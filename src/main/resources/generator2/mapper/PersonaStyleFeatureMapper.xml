@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.aiagent.mapper.PersonaStyleFeatureMapper">
+
+    <resultMap id="BaseResultMap" type="com.example.aiagent.model.domain.PersonaStyleFeature">
+            <id property="id" column="id" />
+            <result property="sessionId" column="session_id" />
+            <result property="featureType" column="feature_type" />
+            <result property="content" column="content" />
+            <result property="usageCount" column="usage_count" />
+            <result property="isActive" column="is_active" />
+            <result property="lastExtractedAt" column="last_extracted_at" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,session_id,feature_type,content,usage_count,is_active,
+        last_extracted_at
+    </sql>
+</mapper>

@@ -1,8 +1,10 @@
 package com.example.aiagent.service;
 
 import com.example.aiagent.model.PersonaConfig;
+import com.example.aiagent.model.domain.PersonaStyleFeature;
 import com.example.aiagent.repository.MysqlChatMemoryRepository;
 import com.example.aiagent.service.tool.WeatherTool;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.ai.chat.client.ChatClient;
@@ -40,6 +42,8 @@ public class ChatService {
         private final FactVectorService factVectorService;
         private final IntentClassifierService intentClassifierService;
         private final Resource systemPrompt;
+        private final PersonaStyleFeatureService styleFeatureService;
+        private final PersonaStorageService personaStorageService;
 
         private static final PersonaConfig DEFAULT_PERSONA = new PersonaConfig(
                         "可怜的汤姆",
@@ -53,12 +57,16 @@ public class ChatService {
                         MysqlChatMemoryRepository memoryRepository,
                         FactVectorService factVectorService,
                         McpSyncClient steamMcpClient,
-                        IntentClassifierService intentClassifierService) {
+                        IntentClassifierService intentClassifierService,
+                        PersonaStyleFeatureService styleFeatureService,
+                        PersonaStorageService personaStorageService) {
 
                 this.systemPrompt = systemPrompt;
                 this.steamMcpClient = steamMcpClient;
                 this.factVectorService = factVectorService;
                 this.intentClassifierService = intentClassifierService;
+                this.styleFeatureService = styleFeatureService;
+                this.personaStorageService = personaStorageService;
 
                 var chatMemory = MessageWindowChatMemory.builder()
                                 .chatMemoryRepository(memoryRepository)
@@ -157,11 +165,43 @@ public class ChatService {
                 // ==========================================
                 // 3. 组装带有边界隔离的 Prompt (利用模板中的 XML 标签)
                 // ==========================================
+
+                // 从数据库查出当前会话的专属口头禅（最多取5个高频且启用的）
+                List<PersonaStyleFeature> features = styleFeatureService.list(
+                                new LambdaQueryWrapper<PersonaStyleFeature>()
+                                                .eq(PersonaStyleFeature::getSessionId, sessionId)
+                                                .eq(PersonaStyleFeature::getIsActive, 1)
+                                                .orderByDesc(PersonaStyleFeature::getUsageCount)
+                                                .last("LIMIT 5"));
+
+                String dynamicCatchphrases = features.stream()
+                                .map(PersonaStyleFeature::getContent)
+                                .collect(Collectors.joining("、"));
+
+                // 加载持久化的人设配置，如果没有则使用默认
+                PersonaConfig currentPersona = personaStorageService.load();
+                if (currentPersona == null) {
+                        currentPersona = DEFAULT_PERSONA;
+                }
+
+                // 确保各字段不为空（如果存储中没有背景，则回退到默认背景）
+                String aiName = currentPersona.getName() != null ? currentPersona.getName() : DEFAULT_PERSONA.getName();
+                String aiBackground = currentPersona.getBackground() != null ? currentPersona.getBackground()
+                                : DEFAULT_PERSONA.getBackground();
+                String aiStyleBase = currentPersona.getStyle() != null ? currentPersona.getStyle()
+                                : DEFAULT_PERSONA.getStyle();
+
+                // 融合基础风格与动态口头禅
+                String finalStyle = aiStyleBase;
+                if (!dynamicCatchphrases.isEmpty()) {
+                        finalStyle += "\n【语言习惯】：你平时说话时，经常会不自觉地使用这些口头禅或短语：" + dynamicCatchphrases;
+                }
+
                 SystemPromptTemplate template = new SystemPromptTemplate(systemPrompt);
                 var systemMessage = template.createMessage(Map.of(
-                                "ai_name", DEFAULT_PERSONA.getName(),
-                                "ai_background", DEFAULT_PERSONA.getBackground(),
-                                "ai_style", DEFAULT_PERSONA.getStyle(),
+                                "ai_name", aiName,
+                                "ai_background", aiBackground,
+                                "ai_style", finalStyle,
                                 "retrieved_facts_with_quotes", factPrompt.isEmpty() ? "（暂无相关记忆）" : factPrompt,
                                 "user_message", finalUserMessage // 这里被塞进 <user_input> 标签内
                 ));
