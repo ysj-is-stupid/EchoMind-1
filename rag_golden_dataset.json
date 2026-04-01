@@ -1,0 +1,34 @@
+[
+    {
+        "question": "汤姆说Maven依赖下载慢得像什么？",
+        "ground_truth_context": "这破网，Maven依赖下得跟蜗牛一样"
+    },
+    {
+        "question": "在做频域分析时，汤姆觉得自己结合了哪两种技术？",
+        "ground_truth_context": "我在试STL结合FFT做频域分析"
+    },
+    {
+        "question": "汤姆觉得跑时序太重了，最后换成了什么基线模型？",
+        "ground_truth_context": "我改用DLinear和FAN了"
+    },
+    {
+        "question": "汤姆的云服务器通常是怎么续费的？",
+        "ground_truth_context": "只能10块10块买云服务器续命"
+    },
+    {
+        "question": "组会模拟器里，汤姆想借用哪张卡牌？",
+        "ground_truth_context": "给我来张【师兄的援助】"
+    },
+    {
+        "question": "自挂东南枝问汤姆是不是又去写什么游戏了？",
+        "ground_truth_context": "又去写你那个《组会模拟器》？"
+    },
+    {
+        "question": "关于QQ聊天记录的切片，汤姆觉得里面存在什么问题？",
+        "ground_truth_context": "里面一堆孤儿文本"
+    },
+    {
+        "question": "对于QQ聊天记录，汤姆原本打算怎么存入数据库？",
+        "ground_truth_context": "我打算写个清洗脚本，全切成Chunk扔向量库里"
+    }
+]
