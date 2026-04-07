@@ -18,6 +18,10 @@ public class FactItem {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private String exactSourceQuote;
 
+    /** 由后端根据 sourceLineNumbers 回填的聊天记录最早消息时间戳（毫秒），不参与模型输出 */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private long messageTimestamp;
+
     /** 置信度 (0.0-1.0) */
     @JsonPropertyDescription("对该事实判断的置信度，0.0到1.0之间。")
     private double confidence;

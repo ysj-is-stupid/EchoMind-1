@@ -9,37 +9,45 @@
 | 模块 | 说明 |
 |------|------|
 | 多轮对话 | 对话历史持久化到 MySQL，支持多 Session 隔离 |
-| RAG 事实回忆 | 向量检索历史聊天记录中的相关事实，在回复时作为记忆注入 |
-| 人设骨架 | 从大量聊天记录中提炼稳定的性格、语境、风格骨架，当前持久化为 `persona.json`（待迁移至 MySQL） |
-| 动态口头禅 | 从数据库读取高频口头禅拼入 Prompt（提取链路待完成，见 TODO） |
-| 注入拦截 | 对每条用户输入做意图打分，识别越权/提示词注入请求并拒答 |
-| 工具调用 | 内置天气工具；通过 MCP 协议接入外部 Steam 游戏查询服务 |
+| **双流 RAG 引擎** | **① 事实库 (事前)**: 原汁原味实体提取 + 并发多路召回去重； **② 表情库 (事后)**: Regex 内心戏拦截 + RAG 情绪算分 + 动态图片标识替换 |
+| 意图与安全防线 | LLM 前置路由清洗冗长噪音，同时识别过滤越权与注入攻击 |
+| 人设骨架 | 从大量聊天记录中提炼稳定的性格、语境、风格骨架，当前持久化为 `persona.json`（待迁移） |
+| 工具调用 | 内置天气工具；由于 Spring AI 拦截缺陷，探索出了纯靠 Prompt + RegExp 的后置调用解法 |
 
 ---
 
 ## 架构
 
-```
+```text
 用户输入
   │
   ▼
-IntentClassifierService       # 意图打分，检测注入攻击
+IntentClassifierService       # 意图前置清洗与隔离
   │
   ├─ 命中注入 → 构造拒答指令
-  └─ 安全 → 关键词提取 → FactVectorService.recall()  # 向量检索相关事实
+  └─ 需要检索 → 原汁原味特征词提取，裂变 1~3 个搜索短语 (Extractive Query Expansion)
                                 │
                                 ▼
-                          SystemPromptTemplate         # 填充人设、口头禅、事实记忆
+                         [多线程并发召回层] parallelStream
                                 │
                                 ▼
-                           ChatClient                  # 调用大模型
-                          (MessageChatMemoryAdvisor)   # 附带 MySQL 多轮记忆
+                         FactVectorService             # 取出多路历史记忆拼装备用并严格去重
                                 │
                                 ▼
-                          输出校验（过滤 Prompt 泄漏）
+                        SystemPromptTemplate           # 组合人设矩阵 + <dynamic_memory>
                                 │
                                 ▼
-                           返回回复
+                           ChatClient                  # 召唤主模型开展深度角色扮演推理
+                          (MessageChatMemoryAdvisor)   
+                                │
+                                ▼
+                    Regex Sticker Interceptor          # 核心特色：后置正则表达式拦截内心戏 <sticker: xxx>
+                                │
+                                ├── 分数达标(>0.5) ---> 替换为专属图片ID [emj_xxx]   # (StickerVectorService RAG)
+                                └── 未过阈值(太主观) -> 触发静默安全销毁
+                                │
+                                ▼
+                           返回最终回复前端
 ```
 
 **聊天记录处理流程：**
@@ -154,16 +162,20 @@ mvn spring-boot:run
 
 ## TODO
 
-### 口头禅提取链路（未完成）
-当前 `persona_style_feature` 表从未被写入，`ChatService` 读取时始终为空。
+### 个性化表达（口头禅 & 私有表情包）自动化提取链路 (未实现)
+当前 `persona_style_feature` 表和 `vector_persona_stickers.json` 还缺乏一套从海量原始聊天记录中**自动洗数据入库**的脚本链路，属于硬编码或缺位状态。
 
-- [ ] `ExtractionResult` 增加 `catchphrases: List<String>` 字段
-- [ ] `FactExtractorService` Prompt 增加口头禅维度（目前主动禁止提取）
-- [ ] `ChatLogController.vectorizeSync` 把提取出的口头禅写入 `persona_style_feature` 表（Upsert 逻辑）
+- [ ] **提取层抽象**：在 `ExtractionResult` 模型中新增 `catchphrases: List<String>` 和 `stickers: List<StickerInfo>` 字段。
+- [ ] **Prompt 维度扩充**：修改 `FactExtractorService` 的提取指令，让大模型在清洗 QQ 历史切片时：
+  - 统计该片段的高频且独有的口头禅/口癖/Emoji。
+  - 重点识别出原生格式里的 `[图片]` 或特定的通用 `[表情]`。**分析发送该表情前后的历史语境**，将其提炼转换为高度凝聚的客观“情绪描述短语”。
+- [ ] **落盘写入控制 (`ChatLogController / Sync`)**：
+  - 将提取出的 `catchphrases` 执行频率累加与 Upsert，写入 MySQL 的 `persona_style_feature` 表。
+  - 将提炼出的 `stickers` 组装为带 `target_name` 和 `sticker_id` 元数据的 Document，直接调用 `StickerVectorService.addDocuments()`，灌入本地高维表现图库供主回答流调用。
 
 ### 事实记忆缺陷
-- [ ] `FactVectorService` metadata 中回填系统时间戳，`formatAsPrompt` 时显示"X 个月前"，防止时间错乱
-- [ ] 实现定时记忆压缩任务（Memory Compaction）：用模型扫描并合并相互矛盾的旧记忆
+- [x] `FactVectorService` metadata 中回填系统时间戳，`formatAsPrompt` 时显示"X 个月前"，防止时间错乱
+- [x] 实现定时记忆压缩任务（Memory Compaction）：用模型扫描并合并相互矛盾的旧记忆
 
 ### 存储迁移
 - [ ] `persona.json` 迁移至 MySQL `persona_config` 表（`target_name` 为主键），支持多人物共存、改写历史追踪，改动范围：`PersonaStorageService` 实现类 + 新增 Mapper

@@ -3,7 +3,7 @@ spring:
     name: AI-Agent
   ai:
     dashscope:
-      api-key: "sk-b42ad64e8c4b4ab18574cee29a0a54"
+      api-key: "sk-b42ad64e8c4b4ab18574cee29a0a5439"
       chat:
         options:
           model: qwen-turbo

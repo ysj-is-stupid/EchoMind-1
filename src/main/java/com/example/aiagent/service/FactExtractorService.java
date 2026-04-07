@@ -82,18 +82,25 @@ public class FactExtractorService {
             String responseText = chatClient.prompt().user(promptText).call().content();
             ExtractionResult result = converter.convert(responseText);
 
-            // 用行号溯源，回填每条事实的精确原文引用
+            // 用行号溯源，回填每条事实的精确原文引用 和 聊天记录原始时间戳
             if (result != null && result.getFacts() != null) {
                 for (FactItem fact : result.getFacts()) {
                     if (fact.getSourceLineNumbers() != null) {
                         StringBuilder exactQuote = new StringBuilder();
+                        long earliestTimestamp = Long.MAX_VALUE;
                         for (int idx : fact.getSourceLineNumbers()) {
                             if (idx >= 0 && idx < scene.size()) {
                                 ParsedMessage pm = scene.get(idx);
                                 exactQuote.append(pm.getSenderName()).append(": ").append(pm.getContent()).append("\n");
+                                if (pm.getTimestamp() > 0 && pm.getTimestamp() < earliestTimestamp) {
+                                    earliestTimestamp = pm.getTimestamp();
+                                }
                             }
                         }
                         fact.setExactSourceQuote(exactQuote.toString().trim());
+                        if (earliestTimestamp < Long.MAX_VALUE) {
+                            fact.setMessageTimestamp(earliestTimestamp);
+                        }
                     }
                 }
             }

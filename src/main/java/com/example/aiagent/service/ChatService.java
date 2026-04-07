@@ -46,6 +46,7 @@ public class ChatService {
         private final ChatClient rejectionChatClient;
         private final McpSyncClient steamMcpClient;
         private final FactVectorService factVectorService;
+        private final StickerVectorService stickerVectorService;
         private final WeatherTool weatherTool;
         private final IntentClassifierService intentClassifierService;
         private final Resource systemPrompt;
@@ -67,6 +68,7 @@ public class ChatService {
                         WeatherTool weatherTool,
                         MysqlChatMemoryRepository memoryRepository,
                         FactVectorService factVectorService,
+                        StickerVectorService stickerVectorService,
                         McpSyncClient steamMcpClient,
                         IntentClassifierService intentClassifierService,
                         PersonaStyleFeatureService styleFeatureService,
@@ -75,6 +77,7 @@ public class ChatService {
                 this.systemPrompt = systemPrompt;
                 this.steamMcpClient = steamMcpClient;
                 this.factVectorService = factVectorService;
+                this.stickerVectorService = stickerVectorService;
                 this.weatherTool = weatherTool;
                 this.intentClassifierService = intentClassifierService;
                 this.styleFeatureService = styleFeatureService;
@@ -164,10 +167,32 @@ public class ChatService {
                         contextPrompt = getSteamRecentGames(steamId);
 
                 } else if (score.needsRag()) {
-                        // 向量检索：手动预取相关事实
-                        System.out.printf(">>> [RAG] Recalling facts for query: %s%n", message);
-                        List<Document> factDocs = factVectorService.recall(message, 3);
-                        System.out.printf(">>> [RAG] Retrieved %d fact(s)%n", factDocs.size());
+                        // 向量检索：多路并发智能召回 (Multi-Query Retrieval)
+                        System.out.printf(">>> [RAG] Multi-Query Optimization triggered for original query: %s%n",
+                                        message);
+
+                        List<String> queries = score.searchQueries();
+                        if (queries == null || queries.isEmpty()) {
+                                queries = List.of(message); // 兜底策略：如果大模型抽卡失败，用原本的语句
+                        }
+                        System.out.printf(">>> [RAG] Expanded Clean Queries: %s%n", queries);
+
+                        // 开启 Java 并行流，同时拿着 2~3 个分裂改写的无噪音纯净子句请求大模型底层库
+                        List<Document> factDocs = queries.parallelStream()
+                                        .flatMap(q -> factVectorService.recall(q, 3).stream())
+                                        // 以文本内容本身为主键进行 Map 去重（防止同一个事实被不同子句反复搜中引发内容堆叠）
+                                        .collect(Collectors.collectingAndThen(
+                                                        Collectors.toMap(Document::getText, d -> d,
+                                                                        (existing, replacement) -> existing),
+                                                        map -> new ArrayList<>(map.values())));
+
+                        // 防止召回总数太多挤爆 Prompt，做一个最终数量截断控制
+                        if (factDocs.size() > 5) {
+                                factDocs = factDocs.subList(0, 5);
+                        }
+
+                        System.out.printf(">>> [RAG] Retrieved %d uniquely deduplicated fact(s) across all queries%n",
+                                        factDocs.size());
                         contextPrompt = factVectorService.formatAsPrompt(factDocs);
                 }
                 // DIRECT：contextPrompt 保持为空
@@ -228,6 +253,32 @@ public class ChatService {
                         return "（检测到异常，输出已被系统紧急截断。老子现在脑子有点乱，你刚才说啥来着？）";
                 }
 
-                return rawResponse;
+                // 5. 后置拦截器：表情包占位符解析与向量召回替换
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("<sticker:(.*?)>");
+                java.util.regex.Matcher matcher = pattern.matcher(rawResponse);
+                String finalResponse = rawResponse;
+
+                if (matcher.find()) {
+                        String emotionDescription = matcher.group(1).trim();
+                        List<Document> matchedStickers = stickerVectorService.recallByEmotion(emotionDescription,
+                                        aiName);
+
+                        if (!matchedStickers.isEmpty()) {
+                                // 取分值最符合的标识进行替换
+                                String stickerId = (String) matchedStickers.get(0).getMetadata()
+                                                .getOrDefault("sticker_id", "未知");
+                                String realStickerTag = "[emj_" + stickerId + "]";
+                                finalResponse = rawResponse.replace(matcher.group(0), realStickerTag);
+                                System.out.println(">>> [Sticker RAG] Replaced " + matcher.group(0) + " -> "
+                                                + realStickerTag);
+                        } else {
+                                // 防止 OOC 或没有存储此种情绪纪录：静默吃掉该占位符
+                                finalResponse = rawResponse.replace(matcher.group(0), "");
+                                System.out.println(">>> [Sticker RAG] Dropped unsupported emotion sticker: "
+                                                + matcher.group(0));
+                        }
+                }
+
+                return finalResponse;
         }
 }

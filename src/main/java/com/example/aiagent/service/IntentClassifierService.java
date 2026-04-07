@@ -41,7 +41,8 @@ public class IntentClassifierService {
             int riskScore,
             String intentType,
             String routeType,
-            String toolParam) {
+            String toolParam,
+            java.util.List<String> searchQueries) {
 
         public boolean needsRag() {
             return "NEEDS_RAG".equalsIgnoreCase(routeType);
@@ -100,16 +101,24 @@ public class IntentClassifierService {
                    - 触发条件：以上情况都不满足。
                    - 包含：日常问候、顺承上文的语气词（"哈哈"、"确实"）、通用客观技术问题的探讨（不需要你的个人历史）、纯粹的情绪倾诉。
 
-                【Few-Shot 判别示例】
-                输入："你还记得偏好哪种方法处理时序数据吗？" -> routeType=NEEDS_RAG (涉及个人深度偏好和技术选择，需检索记忆看设定)
-                输入："你们做 AI 的平时都用啥显卡？" -> routeType=NEEDS_RAG (探讨个人/群体的具体工作状态，需记忆支撑)
-                输入："这段代码总是报 OOM 怎么办？" -> routeType=DIRECT (通用的技术求助，不需要翻阅你的个人历史，凭基础能力直接解)
-                输入："啊对对对，你说的都对。" -> routeType=DIRECT (情绪向的即时互动)
-                输入："上次你说那个组会模拟器还更新吗？" -> routeType=NEEDS_RAG (明确提及过去的项目和事实)
-                输入："大连如果下雨我就不去了" -> routeType=WEATHER_QUERY (隐含天气查询需求，toolParam="大连")
-                输入："帮我看看 76561198000000000 最近在玩啥" -> routeType=STEAM_QUERY (toolParam="76561198000000000")
+                【任务三：原汁原味核心词提取与扩充 (Extractive Query Expansion)】
+                如果判定为 NEEDS_RAG，绝对不能拿用户的冗长原话去搜索，必须剥离其中所有的主观泛滥情绪、语气词或无意义客套。
+                【铁律】：由于底层使用的是向量相似度，你绝对不能进行高度抽象概括！（例如绝不能把“10块钱服务器”概括为“硬件配置”，这会导致严重丢分）。
+                你必须尽可能“原汁原味”地保留用户话语中特定且稀有的特征词（如具体数字、特殊的原句称呼、具体的报错）。
+                将其裂变为 1 到 3 个不同的搜素短语（必须粘附这些原始特殊词汇），组成数组放入 searchQueries 返回。
+                （如果不是 NEEDS_RAG，则该字段直接返回 [] 空列表）
 
-                必须用 JSON 格式返回，包含 isInjection, riskScore, intentType, routeType, toolParam 五个字段。
+                【Few-Shot 判别示例】
+                输入："老汤，听说是你连个好显卡都没，靠着10块钱破服务器撑起了组会模拟器的架构？这不比那些天天水论文的强？"
+                -> routeType=NEEDS_RAG, searchQueries=["组会模拟器 10块钱服务器 架构", "没好显卡 撑起项目", "水论文 组会模拟器"] (保留原话刺眼特征词)
+
+                输入："这段代码总是报 OOM 怎么办？"
+                -> routeType=DIRECT, searchQueries=[] (无关个人经历，兜底库直接作答)
+
+                输入："大连如果下雨我就不去了"
+                -> routeType=WEATHER_QUERY, toolParam="大连", searchQueries=[]
+
+                必须用 JSON 格式返回，包含 isInjection, riskScore, intentType, routeType, toolParam, searchQueries 这六个字段。
 
                 当前用户的输入是：
                 '''
